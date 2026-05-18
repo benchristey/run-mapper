@@ -53,6 +53,11 @@ export default defineConfig({
         // Don't precache map tiles or routing — handled by runtimeCaching.
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
         navigateFallback: `${BASE}index.html`,
+        // If you change any runtimeCaching shape, bump the cache version
+        // suffixes (`-v2`, `-v3`, ...) so iOS standalone PWAs abandon the
+        // old caches instead of serving stale entries left over from the
+        // previous SW. `cleanupOutdatedCaches()` only sweeps Workbox's
+        // precache, not these runtime caches.
         runtimeCaching: [
           {
             // OpenFreeMap tile / style / sprite requests.
@@ -74,12 +79,35 @@ export default defineConfig({
             },
             handler: "StaleWhileRevalidate",
             options: {
-              cacheName: "map-tiles",
+              cacheName: "map-tiles-v2",
               cacheableResponse: { statuses: [0, 200] },
               expiration: {
                 maxEntries: 2000,
                 maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
               },
+              // If both cache lookup and the SW's own fetch throw, fall
+              // back to a direct browser fetch so we never surface
+              // `no-response` to MapLibre. As a last resort, return an
+              // empty 504 — much better than a thrown SW which iOS treats
+              // as a fatal network error and which bombs the whole map.
+              plugins: [
+                {
+                  handlerDidError: async ({
+                    request,
+                  }: {
+                    request: Request;
+                  }) => {
+                    try {
+                      return await fetch(request);
+                    } catch {
+                      return new Response("", {
+                        status: 504,
+                        statusText: "Gateway Timeout",
+                      });
+                    }
+                  },
+                },
+              ],
             },
           },
           {
@@ -87,11 +115,30 @@ export default defineConfig({
             urlPattern: ({ url }) => url.hostname === "brouter.de",
             handler: "StaleWhileRevalidate",
             options: {
-              cacheName: "brouter-legs",
+              cacheName: "brouter-legs-v2",
+              cacheableResponse: { statuses: [0, 200] },
               expiration: {
                 maxEntries: 500,
                 maxAgeSeconds: 60 * 60 * 24 * 14, // 14 days
               },
+              plugins: [
+                {
+                  handlerDidError: async ({
+                    request,
+                  }: {
+                    request: Request;
+                  }) => {
+                    try {
+                      return await fetch(request);
+                    } catch {
+                      return new Response("", {
+                        status: 504,
+                        statusText: "Gateway Timeout",
+                      });
+                    }
+                  },
+                },
+              ],
             },
           },
         ],
