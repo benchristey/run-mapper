@@ -721,8 +721,27 @@ function emptyFC(): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features: [] };
 }
 
+// Transient fetch errors for tiles, fonts, sprites etc. that should NOT
+// surface as a fatal "Map failed to load" banner once the style is up.
+// Browser variants:
+//   - Safari:    "Load failed"
+//   - Chromium:  "Failed to fetch" / "NetworkError"
+//   - Workbox:   "FetchEvent.respondWith received an error: no-response: ..."
+//                (happens when our service worker's runtime cache can't
+//                produce a response — e.g. cross-origin font 404 on iPad PWA)
+const RECOVERABLE_RESOURCE_ERROR_SUBSTRINGS = [
+  "load failed",
+  "failed to fetch",
+  "networkerror",
+  "no-response",
+  "fetchevent.respondwith",
+];
+
 function isRecoverableMapResourceError(message: string): boolean {
-  return message.trim().toLowerCase() === "load failed";
+  const lower = message.trim().toLowerCase();
+  return RECOVERABLE_RESOURCE_ERROR_SUBSTRINGS.some((needle) =>
+    lower.includes(needle)
+  );
 }
 
 function messageForGeolocationError(error: GeolocationPositionError): string {

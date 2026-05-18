@@ -55,13 +55,27 @@ export default defineConfig({
         navigateFallback: `${BASE}index.html`,
         runtimeCaching: [
           {
-            // OpenFreeMap tile and style requests
-            urlPattern: ({ url }) =>
-              url.hostname.endsWith("openfreemap.org") ||
-              url.hostname.endsWith("versatiles.org"),
+            // OpenFreeMap tile / style / sprite requests.
+            //
+            // We deliberately exclude /fonts/* because the upstream `liberty`
+            // style references font stacks the tile server doesn't always
+            // host (e.g. "Noto Sans Italic"). A failed fetch inside a Workbox
+            // strategy surfaces as `no-response` and bombs MapLibre with a
+            // fatal error — particularly on iPad standalone PWAs. Letting
+            // fonts go directly to the network means missing glyphs simply
+            // don't render and the map keeps working.
+            urlPattern: ({ url }) => {
+              const isMapHost =
+                url.hostname.endsWith("openfreemap.org") ||
+                url.hostname.endsWith("versatiles.org");
+              if (!isMapHost) return false;
+              if (url.pathname.startsWith("/fonts/")) return false;
+              return true;
+            },
             handler: "StaleWhileRevalidate",
             options: {
               cacheName: "map-tiles",
+              cacheableResponse: { statuses: [0, 200] },
               expiration: {
                 maxEntries: 2000,
                 maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
