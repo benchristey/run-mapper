@@ -1,0 +1,70 @@
+---
+description: Dev environment quirks, commands, and how to verify the app actually works
+alwaysApply: true
+---
+
+# Development workflow
+
+## Package manager: pnpm 11
+
+The repo uses **pnpm 11**. Cursor's bundled Node has no `npm`, so `pnpm` (installed via Homebrew) is the only option for this machine.
+
+### One-time setup gotcha
+
+`pnpm 11` promoted `ERR_PNPM_IGNORED_BUILDS` from a warning to a hard error and now requires explicit approval for build scripts. `esbuild` (a transitive dep of Vite) needs its postinstall to run.
+
+After cloning or after `node_modules` is wiped:
+
+```bash
+pnpm install
+pnpm approve-builds --all   # one-shot, non-interactive
+```
+
+`package.json` already lists `pnpm.onlyBuiltDependencies: ["esbuild"]`, but pnpm 11 still requires the user-level approval the first time. Once approved, subsequent installs work cleanly.
+
+## Daily commands
+
+```bash
+pnpm dev          # HTTP, http://localhost:5173 — fastest, but no geolocation on iPad
+pnpm dev:https    # HTTPS via @vitejs/plugin-basic-ssl — required for iPad geolocation
+pnpm build        # static dist/ for any host
+pnpm preview      # serve dist/ locally
+pnpm preview:https
+pnpm typecheck    # tsc -b --noEmit
+```
+
+### HTTPS dev mode and iPad geolocation
+
+iOS Safari only enables `navigator.geolocation` (and many other powerful APIs) on **secure contexts**: HTTPS or `localhost`. On a LAN IP like `http://192.168.0.246:5173/` the startup auto-center and geolocate button cannot work. **Always use `pnpm dev:https` when testing location on the iPad over LAN.**
+
+The plugin generates a self-signed cert at startup. On the iPad, Safari will warn "this connection is not private" the first time — tap *Show Details → visit this website*. The exception sticks for the session. The cert is regenerated on every dev server start; it's fine to leave it that way.
+
+If you need geolocation testing without the cert hassle, use `pnpm dev` and access via `http://localhost:5173/` on the Mac itself (localhost is exempt from the secure-context rule).
+
+When pnpm refuses to run a script (deps-status check fails), invoke binaries directly: `node_modules/.bin/tsc -b --noEmit`, `node_modules/.bin/vite build`. This is a known pnpm 11 quirk and not a project bug.
+
+## Smoke-testing the running app from the agent
+
+The agent does **not** see the user's browser. To verify the app actually rendered (not just compiled), use headless Chrome — Chrome.app is installed at `/Applications/Google Chrome.app`:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --headless=new --enable-webgl --enable-unsafe-swiftshader \
+  --use-gl=angle --use-angle=swiftshader \
+  --window-size=1024,768 --virtual-time-budget=10000 \
+  --screenshot=/tmp/runmapper.png http://localhost:5173/
+```
+
+Then `Read` the PNG to inspect what rendered. Headless Chrome won't load remote map tiles within the time budget but will reveal layout failures, JS errors, and whether MapLibre initialised. `--dump-dom` instead of `--screenshot` gives the post-React DOM, which often surfaces inline error messages we'd otherwise have to ask the user to paste from the console.
+
+## Layout pitfall (don't regress this)
+
+The map container relies on `position: fixed; inset: 0` on `App.tsx`'s root div. **Do not change it back to `h-full w-full`** — that depended on a flex chain that collapsed in some setups and produced a zero-height map.
+
+The map container itself sets explicit `width: 100%; height: 100%` AND an inline cream `background: #f8f4f0` (matching OpenFreeMap's `liberty` style background) so the area looks correct even before tiles paint.
+
+## When the user reports "no map"
+
+1. Check the dev server is on **port 5173** (not 5174 from a stale instance — kill old PIDs).
+2. Ask the user to do a hard refresh (Cmd+Shift+R) — HMR doesn't always re-mount MapView.
+3. `MapView.tsx` shows a dismissible red banner for fatal map errors. Generic `Load failed` resource errors are recoverable once the map style has loaded and should stay console-only so tile hiccups don't block the UI.

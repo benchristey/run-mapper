@@ -1,0 +1,99 @@
+---
+description: Core data model, the per-leg routing pattern, and where things live
+alwaysApply: true
+---
+
+# Architecture
+
+## Data model (`src/types.ts`)
+
+```ts
+type LngLat = [number, number];
+type LngLatEle = [number, number, number?];
+
+interface Waypoint { id: string; pos: LngLat; name?: string }
+
+interface Leg {
+  fromId: string; toId: string;
+  coords: LngLatEle[];          // routed polyline (incl. elevation)
+  distanceM: number; ascentM: number; descentM: number;
+  profile: string;
+  status: 'pending' | 'ok' | 'error' | 'straight';
+}
+
+interface Route {
+  id: string; name: string;
+  waypoints: Waypoint[];
+  legs: Leg[];                   // legs[i] connects waypoints[i] -> waypoints[i+1]
+  profile: BrouterProfile;
+  createdAt: number; updatedAt: number;
+}
+```
+
+**Invariant**: `legs.length === Math.max(0, waypoints.length - 1)`. `legs[i]` always connects `waypoints[i]` to `waypoints[i+1]`.
+
+## Per-leg routing — the central pattern
+
+A "leg" is the routed segment between two consecutive waypoints. **Always re-fetch only the legs that touch a changed waypoint** — do NOT re-route the whole polyline:
+
+| Edit | Affected legs |
+|---|---|
+| Insert waypoint at index `i` | `legs[i-1]` and `legs[i]` (newly inserted) |
+| Drag/move waypoint at index `i` | `legs[i-1]` and `legs[i]` |
+| Delete waypoint at index `i` | The two adjacent legs collapse into one new leg |
+| Profile change | All legs (re-fetched in order) |
+
+Implemented in `src/state/routeStore.ts` (`rerouteAround`, `addWaypoint`, `removeWaypoint`). When a leg is being fetched, set `status: 'pending'` so the map renders it dashed; on network error, fall back to a straight line with `status: 'straight'`.
+
+Deletion must update `waypoints` and `legs` atomically in the same Zustand `set`. In particular, deleting down to fewer than two waypoints must set `legs: []` in that same write; otherwise MapLibre can briefly keep rendering stale route-source geometry until the next route update.
+
+## File layout
+
+```
+src/
+  App.tsx                  # composition root, wires file/save logic + keyboard shortcuts
+  main.tsx                 # bootstrap (StrictMode + maplibre css import)
+  components/
+    MapView.tsx            # MapLibre map, markers, route source/layers, gestures
+    Toolbar.tsx            # top floating toolbar (file ops, mode, undo, profile)
+    RoutePanel.tsx         # bottom sheet — name, stats, elevation, waypoint list
+    ElevationProfile.tsx   # SVG chart sampled from leg coords
+    WaypointList.tsx
+    LibraryDrawer.tsx      # IndexedDB-backed library
+    InstallHint.tsx        # one-shot iOS A2HS hint
+  state/
+    routeStore.ts          # zustand store: waypoints, legs, profile, undo/redo, file/library bindings
+  services/
+    brouter.ts             # routeLeg() — single leg via BRouter, in-memory cache
+    gpx.ts                 # parseGpx, serializeGpx (GPX 1.1 + runmapper:* extension)
+    fsAccess.ts            # FS Access API + download/upload fallback
+    idb.ts                 # listRoutes, loadRoute, saveRoute, renameRoute, deleteRoute
+  hooks/useInstallHint.ts
+  types.ts
+  global.d.ts              # FS Access API typings (not yet in lib.dom)
+  styles.css               # Tailwind base + maplibre tweaks + marker classes
+```
+
+## How MapView talks to the store
+
+`MapView` mounts the MapLibre map once, then **subscribes to the store imperatively** (`useRouteStore.subscribe(selector, listener, { equalityFn, fireImmediately })`). The listener mutates MapLibre marker positions and updates the GeoJSON source directly — React never re-renders the map. This is intentional: do not refactor MapView to redeclare markers on every render.
+
+## Selection model
+
+`useRouteStore.selectedIds: string[]` (multi-select). `length === 1` is the typical single-selected case. Actions:
+
+| Action | Effect |
+|---|---|
+| `setSelected(id \| null)` | Replace selection with `[id]` (or `[]` when null). Used for marker clicks / WaypointList taps in non-Pencil-select modes. |
+| `toggleSelected(id)` | Add or remove one id. Used by Pencil-select mode tap-on-marker. |
+| `setSelectedIds(ids[])` | Bulk replace. Used after a Pencil-select rect/lasso drag releases. |
+| `clearSelection()` | `[]`. Also called automatically by `setPencilMode(m)` whenever `m !== "select"`. |
+| `removeWaypoints(ids[])` | Bulk delete with one history snapshot, then re-route remaining legs in order. |
+
+The Delete-selected button in the Toolbar's Route menu calls `removeWaypoints(selectedIds)` and shows a count badge when `selectedIds.length > 1`.
+
+## Pencil event flow
+
+Pencil interactions live on `map.getCanvas()` via raw `pointerdown/move/up/cancel`, filtered by `pointerType === "pen"`. We `e.preventDefault()` to suppress synthesized touch events (otherwise MapLibre would interpret a Pencil drag as a touch pan). During active Pencil strokes in Add/Select modes, `MapView` also temporarily disables `map.dragPan` and restores its previous state on release/cancel. See `.cursor/rules/ipad-ux.mdc` "Pencil modes" for full details.
+
+The existing finger handlers (`map.on("click", ...)`, the long-press `touchstart`) early-return when `pencilMode !== "off"` so finger never adds while Pencil mode is engaged.

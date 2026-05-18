@@ -1,0 +1,70 @@
+---
+description: GPX 1.1 round-trip format, including the runmapper:* extension
+globs: src/services/gpx.ts
+alwaysApply: false
+---
+
+# GPX format
+
+RunMapper exports valid GPX 1.1 that any tool can read, plus a custom extension block that lets us re-open the file as a fully-editable RunMapper route.
+
+## Output structure
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1"
+     xmlns:rm="https://runmapper.app/schema/1"
+     creator="RunMapper" version="1.1">
+  <metadata>
+    <name>{route.name}</name>
+    <time>{ISO-8601}</time>
+    <extensions>
+      <rm:runmapper>
+        <rm:profile>{trekking|...}</rm:profile>
+        <rm:waypoints>
+          <rm:wp id="..." index="0" lat="..." lon="..." name="..."/>
+          ...
+        </rm:waypoints>
+        <rm:legs>
+          <rm:leg fromId="..." toId="..." status="ok"
+                  distanceM="..." ascentM="..." descentM="..."/>
+          ...
+        </rm:legs>
+      </rm:runmapper>
+    </extensions>
+  </metadata>
+  <wpt lat=".." lon=".."><name>Point 1</name></wpt>
+  ...
+  <trk>
+    <name>{route.name}</name>
+    <trkseg>
+      <trkpt lat=".." lon=".."><ele>..</ele></trkpt>
+      ...   <!-- concatenation of all leg coords -->
+    </trkseg>
+  </trk>
+</gpx>
+```
+
+The `<wpt>` elements duplicate the planned waypoints so the file is meaningful in any GPX viewer. The `<trk>` polyline concatenates every leg's routed coordinates.
+
+## Round-trip rules
+
+- `parseGpx(xml)` first looks for `<rm:runmapper>` — if present, rebuilds waypoints/legs/profile losslessly using the extension data and slices the track between waypoint indices.
+- If `<rm:runmapper>` is absent (third-party GPX) and the file has `<trkpt>` entries, simplify the track into editable control waypoints. Preserve the original GPX geometry by storing the full original trackpoint slice inside each simplified leg's `coords`, and do not call BRouter on load.
+- If a third-party GPX has no `<trkpt>` entries but does have `<wpt>` entries, import those waypoints without legs.
+
+## Generic GPX performance note
+
+Generic GPX import must not create a marker for every trackpoint. Large activity exports can contain thousands of points and will destroy iPad performance if each becomes a waypoint/leg. Use `simplifyTrackpointIndexes()` in `src/services/gpx.ts`: exact consecutive dedupe, minimum control spacing, Douglas-Peucker simplification in meter space, and a hard editable-waypoint cap (currently 500). First and last trackpoints are always preserved.
+
+The simplified waypoints are editing handles, not the full displayed geometry. Each imported `Leg` should contain the original GPX trackpoint segment between adjacent retained control indexes so the route line still follows the source file closely.
+
+## Don't break
+
+- Keep the `runmapper:` namespace at `https://runmapper.app/schema/1`. If you ever need to evolve the extension, bump to `/2` and parse both.
+- `wp/@_index` is the source of truth for waypoint order in extensions. Do not rely on document order.
+- Always include `<ele>` on `<trkpt>` when a leg coord has it (BRouter returns elevation per vertex). Some downstream tools (e.g. Strava import) silently drop ascent stats without it.
+
+## Filename UX
+
+`saveGpxAs` ensures `.gpx` extension via `ensureGpxExtension`. `parseGpx` accepts an optional file name and uses it to default the route name when GPX `<metadata><name>` is missing.

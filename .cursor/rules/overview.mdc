@@ -1,0 +1,32 @@
+---
+description: RunMapper project overview, scope, and explicit non-goals
+alwaysApply: true
+---
+
+# RunMapper
+
+RunMapper is an iPad-first Progressive Web App for **planning and saving running routes as GPX files**. The user taps points on a map, RunMapper snaps the segments to real footpaths/roads via [BRouter](https://brouter.de/brouter-web/), and the result can be exported to a `.gpx` file or stored in a local library.
+
+## Primary user
+
+A runner planning a route on an iPad before going out. Must work in Safari (PWA installable to home screen).
+
+## Core capabilities (v1)
+
+- Map-based waypoint editor (tap to add, drag to move, tap-on-line to insert, tap-marker to select/delete).
+- Per-leg navigation routing through BRouter (profiles: `trekking`, `fastbike`, `hiking-mountain`, `shortest`).
+- Distance, ascent, descent stats and an SVG elevation profile.
+- Open / Save / Save As `.gpx` — File System Access API on Chromium, download/upload fallback on iPad Safari.
+- Local IndexedDB-backed library (list / load / rename / delete saved routes).
+- Undo / redo with snapshot-based history.
+- Installable PWA with offline-cached map tiles and routing responses.
+
+## Explicit non-goals (do NOT build without an explicit ask)
+
+- Cloud accounts, sync, or any backend.
+- Strava / Komoot import or export.
+- Live GPS recording during a run.
+- Turn-by-turn voice navigation.
+- A second profile family beyond BRouter's built-ins.
+
+These were ruled out for v1 to keep the app a static SPA with no backend. Adding any of them requires a new design pass.

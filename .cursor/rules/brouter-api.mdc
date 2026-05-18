@@ -1,0 +1,66 @@
+---
+description: BRouter public API specifics, profiles, and caching strategy
+globs: src/services/brouter.ts,src/state/routeStore.ts
+alwaysApply: false
+---
+
+# BRouter API
+
+## Endpoint
+
+```
+GET https://brouter.de/brouter
+  ?lonlats={lng,lat|lng,lat}
+  &profile={trekking|fastbike|hiking-mountain|shortest}
+  &alternativeidx=0
+  &format=geojson
+```
+
+Constants live in `src/services/brouter.ts` (`BROUTER_BASE`). To self-host BRouter for production, swap `BROUTER_BASE` and approve the new origin in the SW runtime caching list (`vite.config.ts`).
+
+## Response shape (GeoJSON)
+
+```jsonc
+{
+  "type": "FeatureCollection",
+  "features": [{
+    "type": "Feature",
+    "geometry": { "type": "LineString", "coordinates": [[lng, lat, ele], ...] },
+    "properties": {
+      "track-length": "1234",       // metres, string
+      "filtered ascend": "42",      // realistic ascent (preferred)
+      "plain-ascend": "55"          // fallback
+    }
+  }]
+}
+```
+
+We parse `track-length` and `filtered ascend`/`plain-ascend` (in that preference order). Descent isn't returned by BRouter — we compute it from elevation deltas in `computeDescent`.
+
+## Profile choices
+
+| ID | Use |
+|---|---|
+| `trekking` | **Default**, balances trails + roads. Best for most running routes. |
+| `fastbike` | Prefers paved/road surfaces — useful for road runners. |
+| `hiking-mountain` | Aggressive about trail use — for off-road runs. |
+| `shortest` | Geometric shortest path; rarely what a runner wants but useful as escape hatch. |
+
+There is no dedicated "running" profile in BRouter's standard set. Don't add a custom profile to the public server — it requires server-side files.
+
+## Caching
+
+Two layers:
+
+1. **In-memory** (`memoryCache` in `brouter.ts`) — keyed by rounded coords (5 d.p.) + profile, so sub-meter drag wobble still hits cache.
+2. **Service worker runtime** (`vite.config.ts`, `cacheName: "brouter-legs"`, 14 days) — survives reloads and supports offline replay of recently-planned routes.
+
+When debugging routing, clear both: hard refresh + `caches.delete('brouter-legs')` in DevTools.
+
+## Error fallback
+
+`routeStore.fetchLeg` catches network/HTTP errors and returns a leg with `status: 'error'` and the original straight-line coordinates. The map renders these dashed amber. Never throw upward — partial failures must not block other legs from routing.
+
+## Rate limits / etiquette
+
+The public BRouter server is a free shared resource. Per-leg routing keeps requests small and we cache aggressively. **Do not introduce parallel "preview" requests during marker drag** — wait for `dragend`. If we ever need bigger volume, host our own BRouter.

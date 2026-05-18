@@ -1,0 +1,156 @@
+---
+description: iPad-first UX conventions for components and styles
+globs: src/components/**/*.tsx,src/styles.css,src/App.tsx,index.html
+alwaysApply: false
+---
+
+# iPad UX conventions
+
+The primary device is an **iPad in landscape, used two-handed, in Safari**. Keep these conventions when adding UI.
+
+## Touch targets
+
+- Minimum 44 × 44 px tap area (Apple HIG). Toolbar buttons use `h-10 w-10` (40 px) inside a padded ring — the visible icon is 20 px but the hit area lands at 44 px including padding.
+- Waypoint markers (`.rm-marker` in `styles.css`) are 28 px discs but should remain easy to grab with a finger — don't shrink them below 24 px.
+
+## Viewport and safe areas
+
+- `index.html` sets `viewport-fit=cover`, `apple-mobile-web-app-capable`, `user-scalable=no`. Don't remove these.
+- Honor safe-area insets on every floating panel:
+  ```tsx
+  style={{ paddingTop: "max(env(safe-area-inset-top), 32px)" }}
+  style={{ paddingBottom: "max(env(safe-area-inset-bottom), 8px)" }}
+  ```
+- Standalone iPad web apps can report a small or zero top safe-area inset while the status bar still visually overlaps content. Use a generous 32 px top fallback for top-left/top-right controls, including MapLibre `.maplibregl-ctrl-top-*`.
+- Body has `overscroll-behavior: none` and `touch-action: manipulation` to prevent rubber-band scrolling and double-tap zoom.
+
+## Two interaction modes
+
+The map has a single `mode` toggle in the toolbar:
+
+- **Add (default)** — tap drops a waypoint. Cursor is `crosshair`.
+- **Pan** — tap pans the map. Long-press (600 ms, vibrates) drops a waypoint as a power-user shortcut.
+
+Both modes also accept tap-on-route-line to insert a waypoint into that leg. Don't add a third mode without re-thinking the mental model.
+
+## Bottom sheet, not modal
+
+The route panel is a draggable bottom sheet (`RoutePanel.tsx`), not a modal. The collapse handle (`.rm-sheet-handle`) is the standard iOS affordance — keep it.
+
+**Default to collapsed** (`useState(false)`). The header shows just name + subtitle on the left and total distance on the right — no big stat cards, no input box. Expanded state reveals stats grid, name input, elevation profile, and waypoint list. Don't reverse this: a permanently-expanded sheet eats half the iPad screen.
+
+## Toolbar: vertical strip + context top bar
+
+Default state is intentionally minimal: a small **vertical strip pinned to the top-left edge** holding only **File** and **Route** toggle buttons. No top horizontal bar exists when neither toggle is active. This maximizes map area on iPad.
+
+When a toggle is on, a context-sensitive top bar appears anchored to the right of the strip:
+
+- **File menu** — New, Open, Library (desktop only — never on iPad), Save, Save As. File actions **close the menu** after each click; they're one-shot operations.
+- **Route menu** — Pin (tap-to-add mode), Undo, Redo, Delete-selected, Reverse, Close as loop, Profile selector. Route actions **leave the menu open** so the user can chain edits (undo a few times, toggle Pin, then delete a node, etc.). The Delete button reads `selectedId` from the route store and is disabled when nothing is selected.
+
+The two menus are mutually exclusive: opening one closes the other.
+
+### Closing rules
+
+Menus close ONLY via:
+
+1. Re-tapping the active toggle (closes that menu).
+2. Tapping the other toggle (switches menus — `setMenu("route")` while File is open implicitly closes File).
+3. Pressing Escape (keyboard-only convenience).
+
+There is **no outside-tap dismiss**. Tapping the map, the bottom panel, or any other UI does not close the menu. This is deliberate: the user must be able to pan/zoom/tap-to-add/select-waypoint with the Route menu still open, so they can chain map gestures with Undo, Delete-selected, etc. without the menu disappearing under them. Don't reintroduce a `pointerdown`/`click` document listener for outside-tap dismiss.
+
+### When adding a new action
+
+Decide where it belongs:
+
+- File-shaped (open / save / new doc) → File menu, closes after running.
+- Route-shaped (modifies waypoints / legs / profile) → Route menu, leave menu open.
+- Don't promote any new action to always-visible — the bare default state is the design.
+
+## Pencil modes
+
+iPad Safari distinguishes Apple Pencil from finger via `PointerEvent.pointerType` (`"pen"` vs `"touch"`). RunMapper exposes two Pencil-only modes via toggles in the Route menu, controlled by `pencilMode: "off" | "add" | "select"` in the route store. They are mutually exclusive (toggling one off the other is built into `setPencilMode`).
+
+- **Off** — finger respects the Pin toggle (existing tap-to-add behaviour). Pencil is treated as a normal pointer.
+- **Add** — finger always pans/zooms; only a Pencil tap drops a waypoint. A Pencil tap on a route line inserts a waypoint into that leg. Pencil drag does nothing (deliberate — by user request).
+- **Select** — finger always pans/zooms; Pencil draws a selection shape (`selectShape: "rect" | "lasso"`) that multi-selects waypoints on release. Pencil tap on a waypoint toggles its membership; Pencil tap on empty map clears the selection. Selection clears whenever Pencil-select is exited (`setPencilMode("off")` resets `selectedIds`).
+
+### Why event listeners live on `map.getCanvas()`
+
+MapLibre's own `click`/`touchstart` handlers wrap a `MouseEvent` and don't expose `pointerType`. We attach `pointerdown`/`pointermove`/`pointerup`/`pointercancel` directly to the canvas with `{ passive: false, capture: true }` so we can:
+
+1. Filter on `e.pointerType === "pen"` (skip everything else).
+2. Claim active Pencil events before MapLibre sees them with `preventDefault()`, `stopPropagation()`, and `stopImmediatePropagation()`. Capture phase and `stopImmediatePropagation()` are required on iPad Safari; bubble-phase `stopPropagation()` alone still lets MapLibre drag the map.
+3. Use `setPointerCapture` so the Pencil drag is delivered even when the pen leaves the canvas mid-drag.
+
+During an active Pencil stroke in Add/Select mode, temporarily disable `map.dragPan` and restore its previous enabled state on `pointerup`, `pointercancel`, or map cleanup. This prevents iPad Safari / MapLibre from treating Pencil movement as a map pan. Finger pan/zoom must remain available outside the active Pencil stroke. Also suppress compatibility `mousedown`/`mouseup`/`click` events for a short window after a claimed Pencil event because Safari may synthesize them even after pointer prevention.
+
+The existing finger handlers (`map.on("click", ...)`, the `touchstart` long-press) early-return when `pencilMode !== "off"` so finger never adds while a Pencil mode is engaged.
+
+### Selection model
+
+`selectedIds: string[]` (not `selectedId`). Single-select code paths use `setSelected(id)` which replaces the array with `[id]`. Multi-select code paths use `setSelectedIds`, `toggleSelected`, or `clearSelection`. The Delete-selected button calls `removeWaypoints(selectedIds)` and shows a count badge when more than one waypoint is selected.
+
+Hit-testing is done in canvas pixel space (project waypoint lng/lat with `map.project`, then bounding-box check for rect or ray-casting point-in-polygon for lasso). We don't bother converting the lasso path to lng/lat — the map can't pan during a Pen drag anyway.
+
+## iOS Web Share / file picker gotchas
+
+Two recurring iOS Safari traps when implementing GPX save/open:
+
+### `nav.share()` with files: pass ONLY `files`
+
+Don't pass `title`, `text`, or `url` alongside `files`. iOS Safari treats those as a separate item to share and writes a phantom second file (typically `.webloc` or `.txt`) into the user's chosen Files folder. See `shareGpxFile()` in `src/services/fsAccess.ts`:
+
+```ts
+await nav.share({ files: [file] });               // CORRECT
+await nav.share({ files: [file], title: name });  // WRONG — produces 2 files
+```
+
+### `<input type="file">` with `accept`: omit on iOS
+
+The `accept` attribute uses UTIs internally on iOS Safari, and `.gpx` files don't match `application/gpx+xml`, `application/xml`, `text/xml`, or even the `.gpx` extension hint — they appear greyed-out / unselectable in the picker. Skip the `accept` attribute entirely on iOS (`isIos()` from `src/utils/platform.ts`) and let `parseGpx()` validate the chosen file. Desktop browsers keep the MIME-typed `accept` for nicer UX. See `openViaInput()` in `src/services/fsAccess.ts`.
+
+## MapLibre gestures
+
+- Rotation and pitch are disabled (`pitchWithRotate: false`, `dragRotate: false`, `touchPitch: false`, `touchZoomRotate.disableRotation()`). Running routes don't need 3D and one-finger rotation conflicts with marker drag.
+- Don't enable `cooperativeGestures` — single-finger pan is the expected interaction for a full-screen map.
+
+## Geolocation requires HTTPS on iPad
+
+The startup auto-center and `GeolocateControl` (the "find me" button) call `navigator.geolocation`, which iOS Safari only allows on **secure contexts**: HTTPS or `localhost`. A LAN URL like `http://192.168.0.246:5173/` cannot use location.
+
+For iPad LAN testing run `pnpm dev:https` (see `dev-workflow.mdc`). For production hosting, use any HTTPS provider (GitHub Pages, Netlify, Cloudflare Pages all work). Don't add custom UI to "explain" why geolocation is broken — fix the origin instead.
+
+`MapView` does a one-shot best-effort startup `getCurrentPosition()` after the map style loads, but only while the active route is still empty. If a GPX/library route loads before the geolocation callback returns, route fitting wins and startup location is ignored. Use `App`'s toast callback for permission/timeout/unavailable failures; don't show a map error banner for location failures.
+
+## File save dispatch (`App.tsx#onSave`)
+
+The dispatch differs by platform because iOS Safari's storage model differs.
+
+### Desktop / Chromium
+
+1. If we have a `fileHandle` (FS Access API) → write to disk.
+2. Else if we have a `libraryId` → update the IndexedDB record.
+3. Else if FS Access is supported → "Save As" picker.
+4. Else (e.g. desktop Firefox / Safari) → save to IndexedDB library + show the green "Save to library" pill.
+
+### iPad / iOS (`IOS_FILES_ONLY` branch in `App.tsx`)
+
+The IndexedDB library is **completely hidden** on iPad (no library button in the toolbar, no `LibraryDrawer`, no green pill). Reason: iOS Safari has no API to expose IndexedDB-stored files in the Files app, so a "library" trapped inside Safari is a worse mental model than just using iCloud Drive / On My iPad as the source of truth.
+
+Both Save and Save As call `saveViaFiles()`:
+
+1. Try the Web Share API with files (`navigator.share({ files: [...] })`). On iOS 15+ this surfaces the system share sheet, which prominently lists **Save to Files**, AirDrop, Mail, etc. One-tap Files save.
+2. If the share API is unavailable or rejects with a non-cancel error, fall back to a plain `<a download>` blob download.
+3. If the user dismisses the share sheet (`AbortError`), leave the route dirty — they cancelled.
+
+`fileHandle` saves still take priority on iPad too, but FS Access isn't supported there, so this path is dead in practice. We keep it for forwards compat.
+
+### Detecting iPad
+
+Use `isIos()` from `src/utils/platform.ts`. It catches iPadOS 13+'s Mac-spoofed UA via `'ontouchend' in document`. Don't roll your own UA sniff — extend the helper instead.
+
+### Don't reintroduce the library on iPad
+
+If you're tempted to add an iPad-only "favorites" list backed by IndexedDB: don't. Users have already expressed they want Files as the single source of truth. A Files folder (e.g. `iCloud Drive/RunMapper/`) IS their library — they manage favorites/folders/sharing through the Files app, not through us.

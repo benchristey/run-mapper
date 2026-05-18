@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  background: #0b1220;
+  color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+button,
+[role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* MapLibre tweaks */
+.maplibregl-ctrl-attrib {
+  font-size: 10px !important;
+}
+
+.maplibregl-ctrl-top-left,
+.maplibregl-ctrl-top-right {
+  margin-top: max(env(safe-area-inset-top), 32px);
+}
+
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right {
+  margin-bottom: max(env(safe-area-inset-bottom), 8px);
+}
+
+/* Custom waypoint markers */
+.rm-marker {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #22c55e;
+  border: 3px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  color: #0f172a;
+  cursor: grab;
+  touch-action: none;
+}
+.rm-marker[data-active="true"] {
+  outline: 4px solid rgba(34, 197, 94, 0.35);
+}
+.rm-marker[data-kind="start"] {
+  background: #22c55e;
+}
+.rm-marker[data-kind="end"] {
+  background: #ef4444;
+}
+.rm-marker[data-kind="mid"] {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* Bottom sheet drag handle */
+.rm-sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: #475569;
+  margin: 6px auto 2px;
+}
+
+/* Hide scrollbars on mobile sheets */
+.rm-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.rm-no-scrollbar {
+  scrollbar-width: none;
+}

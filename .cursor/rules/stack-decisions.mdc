@@ -1,0 +1,23 @@
+---
+description: Tech stack choices and the rationale behind each. Do not swap pieces lightly.
+alwaysApply: true
+---
+
+# Stack decisions
+
+Each choice was deliberate. If you change one, update this file and the README.
+
+| Concern | Choice | Why |
+|---|---|---|
+| App shell | Vite + React 18 + TypeScript, deployed as a static PWA | User picked PWA over native — one codebase, installable on iPad Safari via "Add to Home Screen", no backend. |
+| Map | MapLibre GL JS + [OpenFreeMap](https://openfreemap.org/) `liberty` style | Free, no API key, modern vector tiles, CORS-enabled. User-selectable Versatiles styles can be added later. **Don't add a paid tile provider without an explicit ask.** |
+| Routing | [BRouter](https://brouter.de/brouter) public API | Best free routing for runners — its profiles know about footpaths and trails. **Do not switch to OSRM (car-only) or a paid Mapbox Directions key.** For heavy use, host your own BRouter and change `BROUTER_BASE` in `src/services/brouter.ts`. |
+| State | `zustand` with `subscribeWithSelector` middleware | Lightweight, no boilerplate, plays well with MapLibre's imperative API (subscribe outside React, mutate marker positions directly). Redux would be overkill. |
+| GPX | Custom serializer/parser on `fast-xml-parser` | Need a custom `runmapper:` extensions namespace for lossless round-tripping (waypoint IDs, profile, leg metrics). Off-the-shelf libs don't support that. |
+| Storage | IndexedDB via `idb` + File System Access API with download fallback | iPad Safari lacks FS Access, so we always fall back to `<input type="file">` + Blob download. The local IDB library is the iPad-friendly default save destination. |
+| PWA | `vite-plugin-pwa` (Workbox) | Standard. Runtime-caches map tiles (`StaleWhileRevalidate`, 30 days) and BRouter responses (14 days). |
+| Styling | Tailwind CSS, dark theme | Fast iteration; matches dark map UIs. The `ink` palette in `tailwind.config.ts` is the project's neutral. |
+
+## PWA icons: SVG-only, intentional
+
+The manifest icons are SVG (`public/icons/icon.svg`, `icon-maskable.svg`), not PNG. Modern browsers + iOS 16+ handle SVG manifest icons; we deliberately avoided adding a heavy native image dep (sharp/canvas) just for icon generation. If you ever need PNG fallbacks for older iOS, add a build script that uses `sharp` rather than committing pre-baked PNGs.
