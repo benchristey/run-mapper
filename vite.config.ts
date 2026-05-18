@@ -9,8 +9,14 @@ import { VitePWA } from "vite-plugin-pwa";
 declare const process: { env: Record<string, string | undefined> };
 const enableHttps = process.env.VITE_HTTPS === "1";
 
+// Served from a GitHub project site (https://<user>.github.io/run-mapper/),
+// so all built asset URLs and the PWA scope must be prefixed with the repo name.
+// If you ever fork or rename the repo, update this and the PWA paths below.
+const BASE = "/run-mapper/";
+
 // https://vite.dev/config/
 export default defineConfig({
+  base: BASE,
   plugins: [
     react(),
     ...(enableHttps ? [basicSsl()] : []),
@@ -26,8 +32,8 @@ export default defineConfig({
         background_color: "#0f172a",
         display: "standalone",
         orientation: "any",
-        start_url: "/",
-        scope: "/",
+        start_url: BASE,
+        scope: BASE,
         icons: [
           {
             src: "icons/icon.svg",
@@ -46,7 +52,7 @@ export default defineConfig({
       workbox: {
         // Don't precache map tiles or routing — handled by runtimeCaching.
         globPatterns: ["**/*.{js,css,html,svg,png,webmanifest}"],
-        navigateFallback: "/index.html",
+        navigateFallback: `${BASE}index.html`,
         runtimeCaching: [
           {
             // OpenFreeMap tile and style requests

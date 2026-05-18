@@ -102,13 +102,34 @@ RunMapper exports GPX 1.1 with:
 
 Because RunMapper is a static SPA, any static host works.
 
+### GitHub Pages (default)
+
+The repo ships with a workflow at
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) that builds with
+pnpm and publishes to GitHub Pages on every push to `main`. To enable it:
+
+1. In **Settings → Pages**, set **Source: GitHub Actions** (one-time).
+2. Push to `main`. The workflow builds `dist/` and deploys to
+   `https://<your-user>.github.io/run-mapper/`.
+
+The build is configured for a project-site sub-path:
+
+- `base: "/run-mapper/"` in [vite.config.ts](vite.config.ts)
+- PWA `start_url`, `scope`, and the service-worker `navigateFallback` all
+  point at the same sub-path.
+- [`public/404.html`](public/404.html) is a tiny shim that redirects unknown
+  paths back to the app shell.
+
+If you fork or rename the repo, update `BASE` in `vite.config.ts` and the
+redirect target in `public/404.html` accordingly. For a custom domain, drop a
+`public/CNAME` file with your domain, change `BASE` to `/`, and revert the
+404 shim's redirect to `/`.
+
+### Other static hosts
+
 - **Netlify / Vercel / Cloudflare Pages**: connect the repo, build command
-  `pnpm build`, publish directory `dist`.
-- **GitHub Pages**: push `dist` to `gh-pages` (e.g. via
-  [`actions-gh-pages`](https://github.com/peaceiris/actions-gh-pages)).
-  If hosting under a sub-path, set Vite's
-  [`base`](https://vite.dev/config/shared-options.html#base) in
-  `vite.config.ts`.
+  `pnpm build`, publish directory `dist`. Set `base: "/"` in
+  `vite.config.ts` if hosting at the apex of a domain.
 
 ## Attributions and limits
 
@@ -123,6 +144,25 @@ RunMapper relies on free public services. Please be considerate:
 
 If you're publishing RunMapper for a wider audience, consider self-hosting
 both tiles and the routing engine.
+
+## Privacy
+
+RunMapper has no backend. No accounts, no analytics, no telemetry. Your route
+data lives entirely in your browser's IndexedDB (the local library) and in
+`.gpx` files you save yourself. The only network calls the app makes are:
+
+- [BRouter](https://brouter.de/brouter) (`brouter.de`) — fetches a routed
+  polyline for each leg you draw.
+- [OpenFreeMap](https://openfreemap.org/) (`tiles.openfreemap.org`) — fetches
+  map tiles and the vector style.
+
+If RunMapper is served over GitHub Pages (or any other host), the host will
+see your IP at the edge, as with any website. No first-party server is
+involved.
+
+## License
+
+[MIT](LICENSE).
 
 ## Roadmap (out of scope for v1)
 
