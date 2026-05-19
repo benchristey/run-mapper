@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import type {
-  BrouterProfile,
   EditMode,
   Leg,
   LegProfile,
@@ -19,7 +18,7 @@ const HISTORY_LIMIT = 100;
 interface Snapshot {
   waypoints: Waypoint[];
   legs: Leg[];
-  profile: BrouterProfile;
+  profile: LegProfile;
   name: string;
 }
 
@@ -28,7 +27,7 @@ interface RouteState {
   name: string;
   waypoints: Waypoint[];
   legs: Leg[];
-  profile: BrouterProfile;
+  profile: LegProfile;
   mode: EditMode;
   /** Multi-selection. `length === 1` is the common single-select case. */
   selectedIds: string[];
@@ -60,7 +59,7 @@ interface RouteState {
   setSelectedIds: (ids: string[]) => void;
   clearSelection: () => void;
   setName: (n: string) => void;
-  setProfile: (p: BrouterProfile) => Promise<void>;
+  setProfile: (p: LegProfile) => Promise<void>;
   setLegProfile: (legIndex: number, profile: LegProfile) => Promise<void>;
   setLegProfiles: (legIndexes: number[], profile: LegProfile) => Promise<void>;
   addWaypoint: (pos: LngLat) => Promise<void>;
@@ -181,7 +180,7 @@ const findLeg = (legs: Leg[], fromId: string, toId: string) =>
 function rebuildLegsPreservingProfiles(
   wps: Waypoint[],
   oldLegs: Leg[],
-  defaultProfile: BrouterProfile
+  defaultProfile: LegProfile
 ): Leg[] {
   return wps.slice(0, -1).map((from, i) => {
     const to = wps[i + 1];
@@ -544,7 +543,7 @@ async function rerouteAround(
   set: (partial: Partial<RouteState>) => void,
   wps: Waypoint[],
   idx: number,
-  defaultProfile: BrouterProfile,
+  defaultProfile: LegProfile,
   _movedTo: boolean
 ) {
   // Rebuild leg array with placeholders.

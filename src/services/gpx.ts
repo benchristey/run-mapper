@@ -177,7 +177,7 @@ function gpxTrkName(gpx: NonNullable<GpxRouteJson["gpx"]>): string | undefined {
   return trk?.name;
 }
 
-function parseLegProfile(value: unknown, fallback: BrouterProfile): LegProfile {
+function parseLegProfile(value: unknown, fallback: LegProfile): LegProfile {
   if (value === STRAIGHT_PROFILE) return STRAIGHT_PROFILE;
   if (BROUTER_PROFILES.includes(value as BrouterProfile)) {
     return value as BrouterProfile;
@@ -190,11 +190,7 @@ function hydrateFromRm(
   rm: RmExt,
   name: string
 ): Route {
-  const profile = (
-    BROUTER_PROFILES.includes(rm.profile as BrouterProfile)
-      ? rm.profile
-      : "trekking"
-  ) as BrouterProfile;
+  const profile = parseLegProfile(rm.profile, "trekking");
   const wpEntries = arr(rm.waypoints?.wp).slice().sort((a, b) => a["@_index"] - b["@_index"]);
   const waypoints: Waypoint[] = wpEntries.map((w) => ({
     id: w["@_id"] || newId(),

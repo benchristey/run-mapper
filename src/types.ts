@@ -29,7 +29,7 @@ export interface Route {
   waypoints: Waypoint[];
   /** legs[i] connects waypoints[i] -> waypoints[i+1]. length === waypoints.length - 1 (or 0). */
   legs: Leg[];
-  profile: BrouterProfile;
+  profile: LegProfile;
   createdAt: number;
   updatedAt: number;
 }

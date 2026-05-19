@@ -3,10 +3,7 @@ import { usePreferencesStore } from "../state/preferences";
 import { useRouteStore } from "../state/routeStore";
 import {
   ALL_LEG_PROFILES,
-  BROUTER_PROFILES,
   LEG_PROFILE_LABELS,
-  PROFILE_LABELS,
-  type BrouterProfile,
   type LegProfile,
 } from "../types";
 
@@ -362,12 +359,12 @@ export function Toolbar({ onOpen, onSave, onSaveAs, onLibrary, onNew }: ToolbarP
               className="rounded-lg bg-ink-900 px-2 py-1 text-xs font-medium text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-400"
               value={profile}
               onChange={(e) =>
-                void setProfile(e.target.value as BrouterProfile)
+                void setProfile(e.target.value as LegProfile)
               }
             >
-              {BROUTER_PROFILES.map((p) => (
+              {ALL_LEG_PROFILES.map((p) => (
                 <option key={p} value={p}>
-                  {PROFILE_LABELS[p]}
+                  {LEG_PROFILE_LABELS[p]}
                 </option>
               ))}
             </select>
