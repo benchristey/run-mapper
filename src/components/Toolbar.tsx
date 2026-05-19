@@ -19,7 +19,7 @@ interface ToolbarProps {
   onNew: () => void;
 }
 
-type MenuId = "file" | "route" | null;
+type MenuId = "file" | "route" | "settings" | null;
 
 export function Toolbar({ onOpen, onSave, onSaveAs, onLibrary, onNew }: ToolbarProps) {
   const mode = useRouteStore((s) => s.mode);
@@ -107,7 +107,7 @@ export function Toolbar({ onOpen, onSave, onSaveAs, onLibrary, onNew }: ToolbarP
       className="pointer-events-none absolute left-0 top-0 z-20 flex items-start gap-2 px-3 pt-3"
       style={{ paddingTop: "max(env(safe-area-inset-top), 32px)" }}
     >
-      {/* Vertical strip — File / Route toggles. Always visible. */}
+      {/* Vertical strip — File / Route / Settings toggles. Always visible. */}
       <div className="pointer-events-auto flex flex-col gap-1 rounded-2xl bg-ink-900/85 p-1 shadow-lg backdrop-blur-md ring-1 ring-white/5">
         <ToolbarToggle
           on={menu === "file"}
@@ -132,6 +132,15 @@ export function Toolbar({ onOpen, onSave, onSaveAs, onLibrary, onNew }: ToolbarP
           title="Route"
         >
           <IconRoute />
+        </ToolbarToggle>
+        <ToolbarToggle
+          on={menu === "settings"}
+          onClick={() => setMenu(menu === "settings" ? null : "settings")}
+          aria-haspopup="menu"
+          aria-expanded={menu === "settings"}
+          title="Settings"
+        >
+          <IconSettings />
         </ToolbarToggle>
       </div>
 
@@ -319,40 +328,50 @@ export function Toolbar({ onOpen, onSave, onSaveAs, onLibrary, onNew }: ToolbarP
             </>
           )}
 
-          <div className="mx-0.5 h-7 w-px bg-white/10" />
+        </div>
+      )}
 
-          <button
-            type="button"
-            className="rounded-xl bg-ink-800 px-3 py-2 text-sm font-bold uppercase tracking-wide text-slate-100 ring-1 ring-white/10 hover:bg-white/5 active:bg-white/10"
-            onClick={routeAction(toggleUnits)}
-            title={
-              units === "metric"
-                ? "Showing kilometres/metres. Tap to show miles/feet."
-                : "Showing miles/feet. Tap to show kilometres/metres."
-            }
-          >
-            {units === "metric" ? "km" : "mi"}
-          </button>
-
-          <div className="mx-0.5 h-7 w-px bg-white/10" />
-
-          <label className="sr-only" htmlFor="rm-profile">
-            Routing profile
+      {menu === "settings" && (
+        <div
+          role="menu"
+          className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-2xl bg-ink-900/85 p-2 shadow-lg backdrop-blur-md ring-1 ring-white/5"
+        >
+          <label className="inline-flex items-center gap-2 rounded-xl bg-ink-800 px-3 py-2 text-xs font-semibold text-slate-300 ring-1 ring-white/10">
+            <span>Units</span>
+            <button
+              type="button"
+              className="rounded-lg bg-ink-900 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-100 ring-1 ring-white/10 hover:bg-white/5 active:bg-white/10"
+              onClick={routeAction(toggleUnits)}
+              title={
+                units === "metric"
+                  ? "Showing kilometres/metres. Tap to show miles/feet."
+                  : "Showing miles/feet. Tap to show kilometres/metres."
+              }
+            >
+              {units === "metric" ? "km" : "mi"}
+            </button>
           </label>
-          <select
-            id="rm-profile"
-            className="rounded-xl bg-ink-800 px-3 py-2 text-sm font-medium text-slate-100 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-            value={profile}
-            onChange={(e) =>
-              void setProfile(e.target.value as BrouterProfile)
-            }
+
+          <label
+            className="inline-flex items-center gap-2 rounded-xl bg-ink-800 px-3 py-2 text-xs font-semibold text-slate-300 ring-1 ring-white/10"
+            htmlFor="rm-default-profile"
           >
-            {BROUTER_PROFILES.map((p) => (
-              <option key={p} value={p}>
-                {PROFILE_LABELS[p]}
-              </option>
-            ))}
-          </select>
+            <span>Default routing</span>
+            <select
+              id="rm-default-profile"
+              className="rounded-lg bg-ink-900 px-2 py-1 text-xs font-medium text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              value={profile}
+              onChange={(e) =>
+                void setProfile(e.target.value as BrouterProfile)
+              }
+            >
+              {BROUTER_PROFILES.map((p) => (
+                <option key={p} value={p}>
+                  {PROFILE_LABELS[p]}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       )}
     </div>
@@ -544,6 +563,14 @@ function IconRoute() {
       <circle cx="6" cy="6" r="2" />
       <circle cx="18" cy="18" r="2" />
       <path d="M8 6h7a4 4 0 0 1 0 8H9a4 4 0 0 0 0 8h7" />
+    </svg>
+  );
+}
+function IconSettings() {
+  return (
+    <svg className={ICON_CLS} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7.1 4l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.9 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.7 1z" />
     </svg>
   );
 }
