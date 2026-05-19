@@ -259,21 +259,8 @@ export const useRouteStore = create<RouteState>()(
       set((s) => ({ ...pushHistory(s), name: n })),
 
     setProfile: async (p) => {
-      const before = get();
-      if (before.profile === p) return;
+      if (get().profile === p) return;
       set((s) => ({ ...pushHistory(s), profile: p }));
-      // Re-fetch all existing legs with the new profile.
-      const wps = get().waypoints;
-      const legs: Leg[] = wps.slice(0, -1).map((from, i) =>
-        placeholderLeg(from, wps[i + 1], p)
-      );
-      set({ legs });
-      const updated: Leg[] = [];
-      for (let i = 0; i < legs.length; i++) {
-        updated.push(await fetchLeg(wps[i], wps[i + 1], p));
-        // Push a partial update so UI sees progress.
-        set({ legs: [...updated, ...legs.slice(updated.length)] });
-      }
     },
 
     setLegProfile: async (legIndex, profile) => {
