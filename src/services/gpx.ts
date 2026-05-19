@@ -2,12 +2,13 @@ import { XMLBuilder, XMLParser } from "fast-xml-parser";
 import type {
   BrouterProfile,
   Leg,
+  LegProfile,
   LngLat,
   LngLatEle,
   Route,
   Waypoint,
 } from "../types";
-import { BROUTER_PROFILES } from "../types";
+import { BROUTER_PROFILES, STRAIGHT_PROFILE } from "../types";
 
 const RM_NS = "https://runmapper.app/schema/1";
 const GENERIC_GPX_MAX_WAYPOINTS = 500;
@@ -23,7 +24,7 @@ const newId = () =>
 interface RmExt {
   profile?: string;
   waypoints?: { wp: { "@_id": string; "@_index": number; "@_lat": number; "@_lon": number; "@_name"?: string }[] };
-  legs?: { leg: { "@_fromId": string; "@_toId": string; "@_status": string; "@_distanceM": number; "@_ascentM": number; "@_descentM": number }[] };
+  legs?: { leg: { "@_fromId": string; "@_toId": string; "@_status": string; "@_profile"?: string; "@_distanceM": number; "@_ascentM": number; "@_descentM": number }[] };
 }
 
 interface GpxRouteJson {
@@ -121,6 +122,7 @@ export function serializeGpx(route: Route): string {
         "@_fromId": l.fromId,
         "@_toId": l.toId,
         "@_status": l.status,
+        "@_profile": l.profile,
         "@_distanceM": Math.round(l.distanceM),
         "@_ascentM": Math.round(l.ascentM),
         "@_descentM": Math.round(l.descentM),
@@ -175,6 +177,14 @@ function gpxTrkName(gpx: NonNullable<GpxRouteJson["gpx"]>): string | undefined {
   return trk?.name;
 }
 
+function parseLegProfile(value: unknown, fallback: BrouterProfile): LegProfile {
+  if (value === STRAIGHT_PROFILE) return STRAIGHT_PROFILE;
+  if (BROUTER_PROFILES.includes(value as BrouterProfile)) {
+    return value as BrouterProfile;
+  }
+  return fallback;
+}
+
 function hydrateFromRm(
   gpx: NonNullable<GpxRouteJson["gpx"]>,
   rm: RmExt,
@@ -226,6 +236,7 @@ function hydrateFromRm(
       ];
     }
     const meta = legMeta[i];
+    const legProfile = parseLegProfile(meta?.["@_profile"], profile);
     legs.push({
       fromId: waypoints[i].id,
       toId: waypoints[i + 1].id,
@@ -233,7 +244,7 @@ function hydrateFromRm(
       distanceM: meta ? Number(meta["@_distanceM"]) : lineLength(coords),
       ascentM: meta ? Number(meta["@_ascentM"]) : 0,
       descentM: meta ? Number(meta["@_descentM"]) : 0,
-      profile,
+      profile: legProfile,
       status: ((meta?.["@_status"] as Leg["status"]) ?? "ok"),
     });
   }

@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
+import { usePreferencesStore } from "../state/preferences";
 import { useRouteStore } from "../state/routeStore";
-import { BROUTER_PROFILES, PROFILE_LABELS, type BrouterProfile } from "../types";
+import {
+  ALL_LEG_PROFILES,
+  BROUTER_PROFILES,
+  LEG_PROFILE_LABELS,
+  PROFILE_LABELS,
+  type BrouterProfile,
+  type LegProfile,
+} from "../types";
 
 interface ToolbarProps {
   onOpen: () => void;
@@ -22,19 +30,49 @@ export function Toolbar({ onOpen, onSave, onSaveAs, onLibrary, onNew }: ToolbarP
   const setSelectShape = useRouteStore((s) => s.setSelectShape);
   const profile = useRouteStore((s) => s.profile);
   const setProfile = useRouteStore((s) => s.setProfile);
+  const setLegProfile = useRouteStore((s) => s.setLegProfile);
+  const setLegProfiles = useRouteStore((s) => s.setLegProfiles);
   const undo = useRouteStore((s) => s.undo);
   const redo = useRouteStore((s) => s.redo);
   const reverse = useRouteStore((s) => s.reverse);
   const closeLoop = useRouteStore((s) => s.closeLoop);
   const removeWaypoints = useRouteStore((s) => s.removeWaypoints);
   const selectedIds = useRouteStore((s) => s.selectedIds);
+  const waypoints = useRouteStore((s) => s.waypoints);
+  const legs = useRouteStore((s) => s.legs);
   const dirty = useRouteStore((s) => s.dirty);
   const fileName = useRouteStore((s) => s.fileName);
   const canUndo = useRouteStore((s) => s.history.length > 0);
   const canRedo = useRouteStore((s) => s.future.length > 0);
+  const units = usePreferencesStore((s) => s.units);
+  const toggleUnits = usePreferencesStore((s) => s.toggleUnits);
 
   const pencilEngaged = pencilMode !== "off";
   const selectionCount = selectedIds.length;
+  const selectedIndex =
+    selectionCount === 1
+      ? waypoints.findIndex((wp) => wp.id === selectedIds[0])
+      : -1;
+  const incomingLegIndex = selectedIndex > 0 ? selectedIndex - 1 : -1;
+  const outgoingLegIndex =
+    selectedIndex >= 0 && selectedIndex < waypoints.length - 1
+      ? selectedIndex
+      : -1;
+  const selectedIdSet = new Set(selectedIds);
+  const selectedLegIndexes =
+    selectionCount > 1
+      ? legs.flatMap((leg, i) =>
+          selectedIdSet.has(leg.fromId) && selectedIdSet.has(leg.toId)
+            ? [i]
+            : []
+        )
+      : [];
+  const selectedLegProfiles = selectedLegIndexes.map((i) => legs[i]?.profile);
+  const selectedLegProfile =
+    selectedLegProfiles.length > 0 &&
+    selectedLegProfiles.every((p) => p === selectedLegProfiles[0])
+      ? selectedLegProfiles[0]
+      : null;
 
   const [menu, setMenu] = useState<MenuId>(null);
 
@@ -238,6 +276,64 @@ export function Toolbar({ onOpen, onSave, onSaveAs, onLibrary, onNew }: ToolbarP
             <IconLoop />
           </ToolbarButton>
 
+          {selectionCount === 1 && (
+            <>
+              <div className="mx-0.5 h-7 w-px bg-white/10" />
+              {incomingLegIndex >= 0 && (
+                <LegProfileSelect
+                  id="rm-leg-profile-in"
+                  label="In"
+                  title="Routing for the leg into the selected waypoint"
+                  value={legs[incomingLegIndex]?.profile ?? profile}
+                  onChange={(next) =>
+                    void setLegProfile(incomingLegIndex, next)
+                  }
+                />
+              )}
+              {outgoingLegIndex >= 0 && (
+                <LegProfileSelect
+                  id="rm-leg-profile-out"
+                  label="Out"
+                  title="Routing for the leg out of the selected waypoint"
+                  value={legs[outgoingLegIndex]?.profile ?? profile}
+                  onChange={(next) =>
+                    void setLegProfile(outgoingLegIndex, next)
+                  }
+                />
+              )}
+            </>
+          )}
+          {selectionCount > 1 && selectedLegIndexes.length > 0 && (
+            <>
+              <div className="mx-0.5 h-7 w-px bg-white/10" />
+              <LegProfileSelect
+                id="rm-leg-profile-selected"
+                label={`${selectedLegIndexes.length} legs`}
+                title="Routing for legs between selected waypoints"
+                value={selectedLegProfile}
+                placeholder="Mixed"
+                onChange={(next) =>
+                  void setLegProfiles(selectedLegIndexes, next)
+                }
+              />
+            </>
+          )}
+
+          <div className="mx-0.5 h-7 w-px bg-white/10" />
+
+          <button
+            type="button"
+            className="rounded-xl bg-ink-800 px-3 py-2 text-sm font-bold uppercase tracking-wide text-slate-100 ring-1 ring-white/10 hover:bg-white/5 active:bg-white/10"
+            onClick={routeAction(toggleUnits)}
+            title={
+              units === "metric"
+                ? "Showing kilometres/metres. Tap to show miles/feet."
+                : "Showing miles/feet. Tap to show kilometres/metres."
+            }
+          >
+            {units === "metric" ? "km" : "mi"}
+          </button>
+
           <div className="mx-0.5 h-7 w-px bg-white/10" />
 
           <label className="sr-only" htmlFor="rm-profile">
@@ -260,6 +356,49 @@ export function Toolbar({ onOpen, onSave, onSaveAs, onLibrary, onNew }: ToolbarP
         </div>
       )}
     </div>
+  );
+}
+
+function LegProfileSelect({
+  id,
+  label,
+  title,
+  value,
+  placeholder,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  title: string;
+  value: LegProfile | null;
+  placeholder?: string;
+  onChange: (profile: LegProfile) => void;
+}) {
+  return (
+    <label
+      className="inline-flex items-center gap-1 rounded-xl bg-ink-800 px-2 py-1 text-xs font-semibold text-slate-300 ring-1 ring-white/10"
+      title={title}
+      htmlFor={id}
+    >
+      <span>{label}</span>
+      <select
+        id={id}
+        className="max-w-36 rounded-lg bg-ink-900 px-2 py-1 text-xs font-medium text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value as LegProfile)}
+      >
+        {value == null && placeholder && (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        )}
+        {ALL_LEG_PROFILES.map((p) => (
+          <option key={p} value={p}>
+            {LEG_PROFILE_LABELS[p]}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

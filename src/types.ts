@@ -18,7 +18,7 @@ export interface Leg {
   distanceM: number;
   ascentM: number;
   descentM: number;
-  profile: string;
+  profile: LegProfile;
   status: LegStatus;
   errorMessage?: string;
 }
@@ -47,6 +47,19 @@ export const PROFILE_LABELS: Record<BrouterProfile, string> = {
   fastbike: "Fast / road",
   "hiking-mountain": "Hiking / trail",
   shortest: "Shortest path",
+};
+
+export const STRAIGHT_PROFILE = "straight" as const;
+export type LegProfile = BrouterProfile | typeof STRAIGHT_PROFILE;
+
+export const ALL_LEG_PROFILES: LegProfile[] = [
+  ...BROUTER_PROFILES,
+  STRAIGHT_PROFILE,
+];
+
+export const LEG_PROFILE_LABELS: Record<LegProfile, string> = {
+  ...PROFILE_LABELS,
+  straight: "Straight (manual)",
 };
 
 export type EditMode = "pan" | "add";

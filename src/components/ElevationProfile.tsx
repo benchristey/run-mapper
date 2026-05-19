@@ -1,4 +1,9 @@
 import { useMemo } from "react";
+import {
+  formatDistance,
+  formatElevation,
+  usePreferencesStore,
+} from "../state/preferences";
 import { useRouteStore } from "../state/routeStore";
 import type { Leg } from "../types";
 
@@ -13,6 +18,7 @@ const PAD = { top: 8, right: 12, bottom: 22, left: 36 };
 
 export function ElevationProfile() {
   const legs = useRouteStore((s) => s.legs);
+  const units = usePreferencesStore((s) => s.units);
   const samples = useMemo(() => sampleLegs(legs), [legs]);
 
   if (samples.length < 2) {
@@ -55,7 +61,7 @@ export function ElevationProfile() {
       <div className="mb-1 flex items-baseline justify-between text-[10px] uppercase tracking-wider text-slate-500">
         <span>Elevation</span>
         <span className="tabular-nums text-slate-400">
-          {Math.round(minEle)}–{Math.round(maxEle)} m
+          {formatElevation(minEle, units)}–{formatElevation(maxEle, units)}
         </span>
       </div>
       <div className="rounded-xl bg-ink-800/40 p-2 ring-1 ring-white/5">
@@ -90,7 +96,7 @@ export function ElevationProfile() {
                 textAnchor="end"
                 fill="#94a3b8"
               >
-                {Math.round(t)}
+                {formatElevation(t, units)}
               </text>
             </g>
           ))}
@@ -111,10 +117,10 @@ export function ElevationProfile() {
             textAnchor="end"
             fill="#94a3b8"
           >
-            {(totalDist / 1000).toFixed(2)} km
+            {formatDistance(totalDist, units)}
           </text>
           <text x={PAD.left} y={H - 6} fontSize={9} fill="#94a3b8">
-            0 km
+            {formatDistance(0, units)}
           </text>
         </svg>
       </div>

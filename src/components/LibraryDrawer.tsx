@@ -6,6 +6,11 @@ import {
   renameRoute,
   type RouteSummary,
 } from "../services/idb";
+import {
+  formatDistance,
+  formatElevation,
+  usePreferencesStore,
+} from "../state/preferences";
 import { useRouteStore } from "../state/routeStore";
 
 interface Props {
@@ -20,6 +25,7 @@ export function LibraryDrawer({ open, onClose }: Props) {
   const [editingName, setEditingName] = useState("");
   const loadIntoStore = useRouteStore((s) => s.loadRoute);
   const dirty = useRouteStore((s) => s.dirty);
+  const units = usePreferencesStore((s) => s.units);
 
   useEffect(() => {
     if (!open) return;
@@ -142,7 +148,8 @@ export function LibraryDrawer({ open, onClose }: Props) {
                       <div className="text-xs text-slate-400">
                         {it.waypointCount} pt
                         {it.waypointCount === 1 ? "" : "s"} ·{" "}
-                        {(it.distanceM / 1000).toFixed(2)} km · {Math.round(it.ascentM)} m ↑
+                        {formatDistance(it.distanceM, units)} ·{" "}
+                        {formatElevation(it.ascentM, units)} ↑
                       </div>
                       <div className="text-[10px] uppercase tracking-wide text-slate-500">
                         Saved {timeAgo(it.updatedAt)}

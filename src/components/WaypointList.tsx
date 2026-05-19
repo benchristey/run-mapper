@@ -1,3 +1,4 @@
+import { formatDistance, usePreferencesStore } from "../state/preferences";
 import { useRouteStore } from "../state/routeStore";
 
 export function WaypointList() {
@@ -6,6 +7,7 @@ export function WaypointList() {
   const setSelected = useRouteStore((s) => s.setSelected);
   const removeWaypoint = useRouteStore((s) => s.removeWaypoint);
   const legs = useRouteStore((s) => s.legs);
+  const units = usePreferencesStore((s) => s.units);
 
   if (waypoints.length === 0) {
     return null;
@@ -19,7 +21,7 @@ export function WaypointList() {
           const distLabel = legBefore
             ? legBefore.status === "pending"
               ? "…"
-              : `+${formatKm(legBefore.distanceM)}`
+              : `+${formatDistance(legBefore.distanceM, units)}`
             : "Start";
           const isSelected = selectedIds.includes(wp.id);
           const kind =
@@ -85,8 +87,4 @@ export function WaypointList() {
       </ol>
     </div>
   );
-}
-
-function formatKm(m: number): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${m.toFixed(0)} m`;
 }

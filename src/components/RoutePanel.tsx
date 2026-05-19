@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
+import {
+  formatDistance,
+  formatElevation,
+  usePreferencesStore,
+} from "../state/preferences";
 import { useRouteStore } from "../state/routeStore";
 import { ElevationProfile } from "./ElevationProfile";
 import { WaypointList } from "./WaypointList";
-
-const formatKm = (m: number) =>
-  m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${m.toFixed(0)} m`;
-
-const formatM = (m: number) => `${Math.round(m)} m`;
 
 export function RoutePanel() {
   const [open, setOpen] = useState(false);
@@ -17,6 +17,7 @@ export function RoutePanel() {
   const dirty = useRouteStore((s) => s.dirty);
   const profile = useRouteStore((s) => s.profile);
   const wpCount = useRouteStore((s) => s.waypoints.length);
+  const units = usePreferencesStore((s) => s.units);
 
   const subtitle = useMemo(() => {
     const parts: string[] = [];
@@ -58,7 +59,7 @@ export function RoutePanel() {
           </div>
           <div className="text-right tabular-nums">
             <div className="text-base font-bold leading-none">
-              {formatKm(totals.distanceM)}
+              {formatDistance(totals.distanceM, units)}
             </div>
             <div className="mt-0.5 text-[9px] uppercase tracking-wider text-slate-400">
               distance
@@ -70,9 +71,9 @@ export function RoutePanel() {
       {open && (
         <div className="px-4 pb-4">
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Distance" value={formatKm(totals.distanceM)} />
-            <Stat label="Ascent" value={formatM(totals.ascentM)} />
-            <Stat label="Descent" value={formatM(totals.descentM)} />
+            <Stat label="Distance" value={formatDistance(totals.distanceM, units)} />
+            <Stat label="Ascent" value={formatElevation(totals.ascentM, units)} />
+            <Stat label="Descent" value={formatElevation(totals.descentM, units)} />
           </div>
 
           <div className="mt-3">

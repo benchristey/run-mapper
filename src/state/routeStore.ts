@@ -4,12 +4,14 @@ import type {
   BrouterProfile,
   EditMode,
   Leg,
+  LegProfile,
   LngLat,
   PencilMode,
   Route,
   SelectShape,
   Waypoint,
 } from "../types";
+import { STRAIGHT_PROFILE } from "../types";
 import { routeLeg } from "../services/brouter";
 
 const HISTORY_LIMIT = 100;
@@ -59,6 +61,8 @@ interface RouteState {
   clearSelection: () => void;
   setName: (n: string) => void;
   setProfile: (p: BrouterProfile) => Promise<void>;
+  setLegProfile: (legIndex: number, profile: LegProfile) => Promise<void>;
+  setLegProfiles: (legIndexes: number[], profile: LegProfile) => Promise<void>;
   addWaypoint: (pos: LngLat) => Promise<void>;
   insertWaypointAt: (index: number, pos: LngLat) => Promise<void>;
   moveWaypoint: (id: string, pos: LngLat) => Promise<void>;
@@ -103,7 +107,7 @@ const restore = (snapshot: Snapshot): Partial<RouteState> => ({
 const straightLeg = (
   from: Waypoint,
   to: Waypoint,
-  profile: BrouterProfile,
+  profile: LegProfile,
   status: "pending" | "straight" = "pending"
 ): Leg => ({
   fromId: from.id,
@@ -118,6 +122,14 @@ const straightLeg = (
   profile,
   status,
 });
+
+const placeholderLeg = (from: Waypoint, to: Waypoint, profile: LegProfile) =>
+  straightLeg(
+    from,
+    to,
+    profile,
+    profile === STRAIGHT_PROFILE ? "straight" : "pending"
+  );
 
 function haversine(a: LngLat, b: LngLat): number {
   const R = 6371008.8;
@@ -135,8 +147,12 @@ function haversine(a: LngLat, b: LngLat): number {
 async function fetchLeg(
   from: Waypoint,
   to: Waypoint,
-  profile: BrouterProfile
+  profile: LegProfile
 ): Promise<Leg> {
+  if (profile === STRAIGHT_PROFILE) {
+    return straightLeg(from, to, profile, "straight");
+  }
+
   try {
     const result = await routeLeg(from.pos, to.pos, profile);
     return {
@@ -156,6 +172,38 @@ async function fetchLeg(
       status: "error",
       errorMessage: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+const findLeg = (legs: Leg[], fromId: string, toId: string) =>
+  legs.find((l) => l.fromId === fromId && l.toId === toId);
+
+function rebuildLegsPreservingProfiles(
+  wps: Waypoint[],
+  oldLegs: Leg[],
+  defaultProfile: BrouterProfile
+): Leg[] {
+  return wps.slice(0, -1).map((from, i) => {
+    const to = wps[i + 1];
+    const reuse = findLeg(oldLegs, from.id, to.id);
+    return reuse ?? placeholderLeg(from, to, defaultProfile);
+  });
+}
+
+async function refreshLegIndexes(
+  get: () => RouteState,
+  set: (partial: Partial<RouteState>) => void,
+  wps: Waypoint[],
+  indexes: number[]
+) {
+  for (const i of indexes) {
+    if (i < 0 || i >= wps.length - 1) continue;
+    const current = get().legs[i];
+    const profile = current?.profile ?? get().profile;
+    const fresh = await fetchLeg(wps[i], wps[i + 1], profile);
+    const next = get().legs.slice();
+    next[i] = fresh;
+    set({ legs: next });
   }
 }
 
@@ -218,7 +266,7 @@ export const useRouteStore = create<RouteState>()(
       // Re-fetch all existing legs with the new profile.
       const wps = get().waypoints;
       const legs: Leg[] = wps.slice(0, -1).map((from, i) =>
-        straightLeg(from, wps[i + 1], p, "pending")
+        placeholderLeg(from, wps[i + 1], p)
       );
       set({ legs });
       const updated: Leg[] = [];
@@ -227,6 +275,54 @@ export const useRouteStore = create<RouteState>()(
         // Push a partial update so UI sees progress.
         set({ legs: [...updated, ...legs.slice(updated.length)] });
       }
+    },
+
+    setLegProfile: async (legIndex, profile) => {
+      const { waypoints, legs } = get();
+      if (legIndex < 0 || legIndex >= legs.length) return;
+      if (legs[legIndex].profile === profile) return;
+      const from = waypoints[legIndex];
+      const to = waypoints[legIndex + 1];
+      if (!from || !to) return;
+
+      const pending = legs.slice();
+      pending[legIndex] = placeholderLeg(from, to, profile);
+      set((s) => ({
+        ...pushHistory(s),
+        legs: pending,
+      }));
+
+      const fresh = await fetchLeg(from, to, profile);
+      set((s) => {
+        const next = s.legs.slice();
+        const current = next[legIndex];
+        if (current?.fromId === fresh.fromId && current.toId === fresh.toId) {
+          next[legIndex] = fresh;
+        }
+        return { legs: next };
+      });
+    },
+
+    setLegProfiles: async (legIndexes, profile) => {
+      const { waypoints, legs } = get();
+      const targets = [...new Set(legIndexes)]
+        .filter((i) => i >= 0 && i < legs.length)
+        .filter((i) => legs[i].profile !== profile);
+      if (targets.length === 0) return;
+
+      const pending = legs.slice();
+      for (const i of targets) {
+        const from = waypoints[i];
+        const to = waypoints[i + 1];
+        if (from && to) pending[i] = placeholderLeg(from, to, profile);
+      }
+
+      set((s) => ({
+        ...pushHistory(s),
+        legs: pending,
+      }));
+
+      await refreshLegIndexes(get, set, waypoints, targets);
     },
 
     addWaypoint: async (pos) => {
@@ -239,7 +335,7 @@ export const useRouteStore = create<RouteState>()(
         legs:
           prevWps.length === 0
             ? s.legs
-            : [...s.legs, straightLeg(prevWps[prevWps.length - 1], wp, profile, "pending")],
+            : [...s.legs, placeholderLeg(prevWps[prevWps.length - 1], wp, profile)],
         selectedIds: [wp.id],
       }));
       if (prevWps.length > 0) {
@@ -291,9 +387,7 @@ export const useRouteStore = create<RouteState>()(
       const newWps = waypoints.filter((w) => w.id !== id);
       // Recompute legs before the first state write so the map never sees
       // empty/fewer waypoints paired with stale route geometry.
-      const legs: Leg[] = newWps.slice(0, -1).map((from, i) =>
-        straightLeg(from, newWps[i + 1], profile, "pending")
-      );
+      const legs = rebuildLegsPreservingProfiles(newWps, get().legs, profile);
       set((s) => ({
         ...pushHistory(s),
         waypoints: newWps,
@@ -303,22 +397,7 @@ export const useRouteStore = create<RouteState>()(
       if (legs.length === 0) return;
       // Only the leg that crosses the removed index needs refetch (others were unchanged).
       const refreshIndex = idx === 0 || idx >= newWps.length ? -1 : idx - 1;
-      for (let i = 0; i < legs.length; i++) {
-        if (i === refreshIndex) {
-          legs[i] = await fetchLeg(newWps[i], newWps[i + 1], profile);
-        } else {
-          // Reuse existing routed coords if we still have them.
-          const old = waypoints[i];
-          const oldB = waypoints[i + 1];
-          // Find old leg between same waypoint ids.
-          const oldLeg = get().history[get().history.length - 1]?.legs.find(
-            (l) => l.fromId === old?.id && l.toId === oldB?.id
-          );
-          if (oldLeg) legs[i] = oldLeg;
-          else legs[i] = await fetchLeg(newWps[i], newWps[i + 1], profile);
-        }
-        set({ legs: [...legs] });
-      }
+      await refreshLegIndexes(get, set, newWps, [refreshIndex]);
     },
 
     removeWaypoints: async (ids) => {
@@ -326,9 +405,8 @@ export const useRouteStore = create<RouteState>()(
       const { waypoints, profile } = get();
       const idSet = new Set(ids);
       const newWps = waypoints.filter((w) => !idSet.has(w.id));
-      const legs: Leg[] = newWps.slice(0, -1).map((from, i) =>
-        straightLeg(from, newWps[i + 1], profile, "pending")
-      );
+      const oldLegs = get().legs;
+      const legs = rebuildLegsPreservingProfiles(newWps, oldLegs, profile);
       set((s) => ({
         ...pushHistory(s),
         waypoints: newWps,
@@ -338,27 +416,28 @@ export const useRouteStore = create<RouteState>()(
       // Rebuild legs once. Pending legs are filled in serially below; this
       // keeps the UX simple and avoids partial inconsistent states.
       if (legs.length === 0) return;
-      for (let i = 0; i < legs.length; i++) {
-        legs[i] = await fetchLeg(newWps[i], newWps[i + 1], profile);
-        set({ legs: [...legs] });
-      }
+      const changed = legs.flatMap((leg, i) =>
+        findLeg(oldLegs, leg.fromId, leg.toId) ? [] : [i]
+      );
+      await refreshLegIndexes(get, set, newWps, changed);
     },
 
     reverse: async () => {
-      const { waypoints, profile } = get();
+      const { waypoints, legs: oldLegs, profile } = get();
       const newWps = [...waypoints].reverse();
       set((s) => ({
         ...pushHistory(s),
         waypoints: newWps,
       }));
       const legs: Leg[] = newWps.slice(0, -1).map((from, i) =>
-        straightLeg(from, newWps[i + 1], profile, "pending")
+        placeholderLeg(
+          from,
+          newWps[i + 1],
+          oldLegs[oldLegs.length - 1 - i]?.profile ?? profile
+        )
       );
       set({ legs });
-      for (let i = 0; i < legs.length; i++) {
-        legs[i] = await fetchLeg(newWps[i], newWps[i + 1], profile);
-        set({ legs: [...legs] });
-      }
+      await refreshLegIndexes(get, set, newWps, legs.map((_, i) => i));
     },
 
     closeLoop: async () => {
@@ -465,7 +544,7 @@ async function rerouteAround(
   set: (partial: Partial<RouteState>) => void,
   wps: Waypoint[],
   idx: number,
-  profile: BrouterProfile,
+  defaultProfile: BrouterProfile,
   _movedTo: boolean
 ) {
   // Rebuild leg array with placeholders.
@@ -474,10 +553,12 @@ async function rerouteAround(
     const to = wps[i + 1];
     // Reuse old leg if both endpoints match and not in the affected range.
     if (i !== idx - 1 && i !== idx) {
-      const reuse = oldLegs.find((l) => l.fromId === from.id && l.toId === to.id);
+      const reuse = findLeg(oldLegs, from.id, to.id);
       if (reuse) return reuse;
     }
-    return straightLeg(from, to, profile, "pending");
+    const preservedProfile =
+      findLeg(oldLegs, from.id, to.id)?.profile ?? defaultProfile;
+    return placeholderLeg(from, to, preservedProfile);
   });
   set({ legs });
 
@@ -485,23 +566,18 @@ async function rerouteAround(
   if (idx - 1 >= 0 && idx - 1 < legs.length) targets.push(idx - 1);
   if (idx >= 0 && idx < legs.length) targets.push(idx);
 
-  for (const t of targets) {
-    const fresh = await fetchLeg(wps[t], wps[t + 1], profile);
-    const cur = get().legs.slice();
-    cur[t] = fresh;
-    set({ legs: cur });
-  }
+  await refreshLegIndexes(get, set, wps, targets);
 }
 
 async function refreshPendingLegs(
   get: () => RouteState,
   set: (partial: Partial<RouteState>) => void
 ) {
-  const { waypoints, legs, profile } = get();
+  const { waypoints, legs } = get();
   const next = [...legs];
   for (let i = 0; i < next.length; i++) {
     if (next[i].status === "pending") {
-      next[i] = await fetchLeg(waypoints[i], waypoints[i + 1], profile);
+      next[i] = await fetchLeg(waypoints[i], waypoints[i + 1], next[i].profile);
       set({ legs: [...next] });
     }
   }
